@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omu-ubys"
-version = "1.0.3"
+version = "1.0.4"
 description = "Unofficial Python client for OMU UBYS (University Information Management System)"
 readme = "README.md"
 license = "MIT"

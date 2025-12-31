@@ -38,14 +38,15 @@ with UBYSClient("ogrenci_no", "sifre") as client:
 
 ## 📋 API Referansı
 
-| Metot                                          | Açıklama                         | Dönüş                |
-| ---------------------------------------------- | -------------------------------- | -------------------- |
-| [`get_profile()`](#-profil-bilgisi)            | Öğrenci profili ve GANO          | `UserProfile`        |
-| [`get_transcript()`](#-transkript)             | Akademik transkript + YANO       | `list[Semester]`     |
-| [`get_grades()`](#-notlar)                     | Dönem notları ve sınav detayları | `list[Semester]`     |
-| [`get_weekly_schedule()`](#️-haftalık-program) | Haftalık ders programı           | `list[ScheduleItem]` |
-| [`get_advisor()`](#-danışman)                  | Danışman bilgileri               | `Advisor`            |
-| [`get_cafeteria_menu()`](#-yemek-menüsü)       | Günün yemeği _(giriş gerekmez)_  | `CafeteriaMenu`      |
+| Metot                                             | Açıklama                          | Dönüş                |
+| ------------------------------------------------- | --------------------------------- | -------------------- |
+| [`get_profile()`](#-profil-bilgisi)               | Öğrenci profili ve GANO           | `UserProfile`        |
+| [`get_transcript()`](#-transkript)                | Akademik transkript + YANO        | `list[Semester]`     |
+| [`get_grades()`](#-notlar)                        | Dönem notları ve sınav detayları  | `list[Semester]`     |
+| [`get_class_details(class_id)`](#-ders-detaylari) | Ders detayları ve öğrenci listesi | `ClassDetail`        |
+| [`get_weekly_schedule()`](#️-haftalık-program)    | Haftalık ders programı            | `list[ScheduleItem]` |
+| [`get_advisor()`](#-danışman)                     | Danışman bilgileri                | `Advisor`            |
+| [`get_cafeteria_menu()`](#-yemek-menüsü)          | Günün yemeği _(giriş gerekmez)_   | `CafeteriaMenu`      |
 
 ---
 
@@ -133,6 +134,45 @@ Course(
     exams=(
         Exam(exam_type="Vize", name="1. Ara Sınav", score=75.0, average=65.0),
         Exam(exam_type="Final", name="Final", score=80.0, average=70.0),
+    )
+)
+```
+
+</details>
+
+---
+
+### 📝 Ders Detayları
+
+```python
+# class_id, Course objelerinde mevcuttur (course.class_id)
+# get_grades() sonucundan alabilirsiniz
+details = client.get_class_details("12345")
+
+print(f"Harf Notu: {details.letter_grade}")
+print(f"Sınıf Ortalaması: {details.class_average}")
+
+if details.instructor:
+    print(f"Öğretim Görevlisi: {details.instructor.name}")
+
+print(f"Öğrenci Sayısı: {len(details.students)}")
+```
+
+<details>
+<summary>📦 <b>ClassDetail Yapısı</b></summary>
+
+```python
+ClassDetail(
+    letter_grade="AA",
+    class_average="65.5",
+    instructor=Instructor(name="Dr. ...", image_url="..."),
+    exams=(
+        Exam(exam_type="Vize", score=80.0, ranking="5/50", average=60.0),
+        ...
+    ),
+    students=(
+        Student(id="123", name="Ahmet", surname="Yılmaz", image_url="..."),
+        ...
     )
 )
 ```

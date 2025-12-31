@@ -23,7 +23,6 @@ Example:
 """
 
 from typing import Optional, List
-from urllib.parse import quote
 
 import httpx
 
@@ -33,6 +32,7 @@ from .models import (
     Semester,
     ScheduleItem,
     CafeteriaMenu,
+    ClassDetail,
 )
 from .exceptions import (
     UBYSError,
@@ -47,11 +47,13 @@ from .parsers import (
     parse_sap_id,
     parse_grades,
     parse_class_detail,
+    parse_student_list,
     parse_transcript,
     parse_weekly_schedule,
     parse_advisor,
     parse_cafeteria_menu,
 )
+from dataclasses import replace
 
 
 class UBYSClient:
@@ -323,7 +325,7 @@ class UBYSClient:
         
         return parse_grades(response.text)
     
-    def get_class_details(self, class_id: str) -> dict:
+    def get_class_details(self, class_id: str) -> ClassDetail:
         """
         Get detailed information for a specific class.
         
@@ -331,7 +333,7 @@ class UBYSClient:
             class_id: The class ID (obtained from grades)
             
         Returns:
-            dict: Detailed class info including exam scores and averages
+            ClassDetail: Detailed class info including exam scores, averages, and students.
             
         Raises:
             SessionExpiredError: If not logged in
@@ -342,19 +344,36 @@ class UBYSClient:
             >>> first_course = grades[0].courses[0]
             >>> if first_course.class_id:
             ...     details = client.get_class_details(first_course.class_id)
-            ...     print(details)
+            ...     print(f"Class Average: {details.class_average}")
         """
         self._ensure_logged_in()
         
-        # Encode special characters
-        encoded_id = quote(class_id, safe="")
-        
+        # 1. Fetch Main Detail Page
+        # Note: requests handles URL encoding automatically via params
         response = self._session.get(
             f"{self.BASE_URL}/AIS/Student/Class/ClassDetail",
-            params={"classId": encoded_id},
+            params={"classId": class_id},
         )
         
-        return parse_class_detail(response.text)
+        detail = parse_class_detail(response.text)
+        
+        # 2. Fetch Student List (Attempt)
+        # Note: Endpoint may vary, wrapping in try/except to avoid blocking main content
+        try:
+            # Common endpoint for student list
+            student_response = self._session.get(
+                 f"{self.BASE_URL}/AIS/Student/Class/CourseStudents",
+                 params={"classId": class_id},
+            )
+            if student_response.status_code == 200:
+                students = parse_student_list(student_response.text)
+                if students:
+                    detail = replace(detail, students=tuple(students))
+        except Exception:
+            # Fail silently for student list
+            pass
+        
+        return detail
     
     def get_transcript(self) -> List[Semester]:
         """

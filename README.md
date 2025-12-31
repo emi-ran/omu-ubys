@@ -38,14 +38,15 @@ with UBYSClient("student_number", "password") as client:
 
 ## 📋 API Reference
 
-| Method                                        | Description                           | Returns              |
-| --------------------------------------------- | ------------------------------------- | -------------------- |
-| [`get_profile()`](#-profile)                  | Student profile with cumulative GPA   | `UserProfile`        |
-| [`get_transcript()`](#-transcript)            | Academic transcript with semester GPA | `list[Semester]`     |
-| [`get_grades()`](#-grades)                    | Course grades and exam details        | `list[Semester]`     |
-| [`get_weekly_schedule()`](#️-weekly-schedule) | Weekly class schedule                 | `list[ScheduleItem]` |
-| [`get_advisor()`](#-advisor)                  | Academic advisor info                 | `Advisor`            |
-| [`get_cafeteria_menu()`](#-cafeteria-menu)    | Today's menu _(no auth required)_     | `CafeteriaMenu`      |
+| Method                                           | Description                           | Returns              |
+| ------------------------------------------------ | ------------------------------------- | -------------------- |
+| [`get_profile()`](#-profile)                     | Student profile with cumulative GPA   | `UserProfile`        |
+| [`get_transcript()`](#-transcript)               | Academic transcript with semester GPA | `list[Semester]`     |
+| [`get_grades()`](#-grades)                       | Course grades and exam details        | `list[Semester]`     |
+| [`get_class_details(class_id)`](#-class-details) | Detailed class info and students      | `ClassDetail`        |
+| [`get_weekly_schedule()`](#️-weekly-schedule)    | Weekly class schedule                 | `list[ScheduleItem]` |
+| [`get_advisor()`](#-advisor)                     | Academic advisor info                 | `Advisor`            |
+| [`get_cafeteria_menu()`](#-cafeteria-menu)       | Today's menu _(no auth required)_     | `CafeteriaMenu`      |
 
 ---
 
@@ -133,6 +134,45 @@ Course(
     exams=(
         Exam(exam_type="Vize", name="Midterm 1", score=75.0, average=65.0),
         Exam(exam_type="Final", name="Final", score=80.0, average=70.0),
+    )
+)
+```
+
+</details>
+
+---
+
+### 📝 Class Details
+
+```python
+# class_id is available in Course objects (course.class_id)
+# You can get it from get_grades() result
+details = client.get_class_details("12345")
+
+print(f"Letter Grade: {details.letter_grade}")
+print(f"Class Average: {details.class_average}")
+
+if details.instructor:
+    print(f"Instructor: {details.instructor.name}")
+
+print(f"Student Count: {len(details.students)}")
+```
+
+<details>
+<summary>📦 <b>ClassDetail Structure</b></summary>
+
+```python
+ClassDetail(
+    letter_grade="AA",
+    class_average="65.5",
+    instructor=Instructor(name="Dr. ...", image_url="..."),
+    exams=(
+        Exam(exam_type="Vize", score=80.0, ranking="5/50", average=60.0),
+        ...
+    ),
+    students=(
+        Student(id="123", name="Ahmet", surname="Yılmaz", image_url="..."),
+        ...
     )
 )
 ```

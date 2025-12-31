@@ -7,6 +7,7 @@ Note: This endpoint does not require authentication.
 
 from typing import Optional
 from bs4 import BeautifulSoup
+import re
 
 from ..models import CafeteriaMenu, MenuItem
 
@@ -35,57 +36,68 @@ def parse_cafeteria_menu(html: str) -> Optional[CafeteriaMenu]:
     items = []
     date_str = ""
     
-    # Try to find the date
-    # Look for common date patterns in headers or entry titles
-    for elem in soup.find_all(["h1", "h2", "h3", "h4", ".entry-title"]):
-        text = elem.get_text(strip=True)
-        if any(month in text.lower() for month in 
-               ["ocak", "şubat", "mart", "nisan", "mayıs", "haziran",
-                "temmuz", "ağustos", "eylül", "ekim", "kasım", "aralık"]):
-            date_str = text
-            break
+    # Find the main content area with the reading class
+    reading_div = soup.find("div", class_="reading")
+    if not reading_div:
+        # Fallback to looking at all content
+        reading_div = soup
     
-    # Find menu items
-    # Common patterns: ul/li lists, table rows, or paragraph text
+    # Find the first table with has-fixed-layout class (today's menu)
+    # Structure: table with rows like: Tarih|31.12.2025, Çorba|Köylü Çorba, etc.
+    today_table = reading_div.find("table", class_="has-fixed-layout")
     
-    # Try list format
-    for ul in soup.find_all("ul"):
-        for li in ul.find_all("li"):
-            text = li.get_text(strip=True)
-            if text and len(text) > 2:  # Skip very short items
-                items.append(MenuItem(name=text))
+    if today_table:
+        tbody = today_table.find("tbody")
+        if tbody:
+            for row in tbody.find_all("tr"):
+                cells = row.find_all("td")
+                if len(cells) >= 2:
+                    label = cells[0].get_text(strip=True)
+                    value = cells[1].get_text(strip=True)
+                    
+                    if label.lower() == "tarih":
+                        date_str = value
+                    elif label and value:
+                        # This is a menu item (Çorba, Yemek, Yemek 2, Yemek 3, etc.)
+                        items.append(MenuItem(name=value, category=label))
     
-    # If no list items, try table format
+    # If no today's menu found, try to find the date header and parse
     if not items:
-        for table in soup.find_all("table"):
-            for row in table.find_all("tr"):
-                cells = row.find_all(["td", "th"])
-                for cell in cells:
-                    text = cell.get_text(strip=True)
-                    if text and len(text) > 2:
-                        items.append(MenuItem(name=text))
-    
-    # If still no items, try paragraphs or divs with class containing "menu" or "yemek"
-    if not items:
-        for elem in soup.find_all(["p", "div"]):
-            class_str = " ".join(elem.get("class", []))
-            if "menu" in class_str.lower() or "yemek" in class_str.lower():
-                text = elem.get_text(strip=True)
-                if text:
-                    # Split by common separators
-                    for item_text in text.split("\n"):
-                        item_text = item_text.strip()
-                        if item_text and len(item_text) > 2:
-                            items.append(MenuItem(name=item_text))
-    
-    # Content area fallback
-    if not items:
-        content = soup.find(class_="entry-content") or soup.find("article")
-        if content:
-            for p in content.find_all("p"):
-                text = p.get_text(strip=True)
-                if text and len(text) > 2:
-                    items.append(MenuItem(name=text))
+        # Check for meta date in the page
+        meta_date = soup.find("div", class_="meta date")
+        if meta_date:
+            # Parse date like "31.12.2025"
+            date_text = meta_date.get_text(strip=True)
+            date_match = re.search(r"\d{2}\.\d{2}\.\d{4}", date_text)
+            if date_match:
+                date_str = date_match.group()
+        
+        # Try to find a monthly schedule table and extract today's row
+        for table in reading_div.find_all("table"):
+            # Skip the has-fixed-layout table we already processed
+            if table.get("class") and "has-fixed-layout" in table.get("class"):
+                continue
+            
+            tbody = table.find("tbody")
+            if not tbody:
+                continue
+            
+            # Look for header row to understand column structure
+            for row in tbody.find_all("tr"):
+                cells = row.find_all("td")
+                if not cells:
+                    continue
+                    
+                first_cell = cells[0].get_text(strip=True)
+                # Check if this row matches the date we're looking for
+                if date_str and first_cell == date_str:
+                    # Found today's row in monthly schedule
+                    for i, cell in enumerate(cells[1:], 1):
+                        text = cell.get_text(strip=True)
+                        if text:
+                            category = f"Yemek {i}" if i > 1 else "Çorba"
+                            items.append(MenuItem(name=text, category=category))
+                    break
     
     if items:
         return CafeteriaMenu(date=date_str or "Bugün", items=tuple(items))

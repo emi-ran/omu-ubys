@@ -32,7 +32,7 @@ Using Context Manager:
     ...     print(client.get_profile().name)
 """
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "Emirhan"
 __license__ = "MIT"
 

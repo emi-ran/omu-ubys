@@ -150,9 +150,11 @@ class MenuItem:
     
     Attributes:
         name: Name of the dish
+        category: Category type (e.g., "Çorba", "Yemek", "Yemek 2")
         calories: Calorie information (if available)
     """
     name: str
+    category: Optional[str] = None
     calories: Optional[int] = None
 
 
@@ -167,3 +169,52 @@ class CafeteriaMenu:
     """
     date: str
     items: tuple[MenuItem, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class Student:
+    """
+    Represents a student enrolled in a class.
+    
+    Attributes:
+        id: Student ID (from data-user-id)
+        name: First name
+        surname: Last name
+        image_url: URL to student's profile picture
+    """
+    id: str
+    name: str
+    surname: str
+    image_url: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class Instructor:
+    """
+    Represents a course instructor.
+    
+    Attributes:
+        name: Full name of the instructor
+        image_url: URL to instructor's photo
+    """
+    name: str
+    image_url: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ClassDetail:
+    """
+    Detailed information about a specific class.
+    
+    Attributes:
+        exams: List of exams and scores
+        students: List of enrolled students
+        instructor: Course instructor info
+        class_average: Main class average (usually final)
+        letter_grade: User's letter grade for this class
+    """
+    exams: tuple[Exam, ...] = field(default_factory=tuple)
+    students: tuple[Student, ...] = field(default_factory=tuple)
+    instructor: Optional[Instructor] = None
+    class_average: Optional[str] = None
+    letter_grade: Optional[str] = None

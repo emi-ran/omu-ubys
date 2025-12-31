@@ -10,7 +10,7 @@ from urllib.parse import unquote
 
 from bs4 import BeautifulSoup
 
-from ..models import Course, Exam, Semester
+from ..models import Course, Exam, Semester, ClassDetail, Student, Instructor
 from ..exceptions import ParseError
 
 
@@ -172,39 +172,51 @@ def _parse_exam_row(row) -> List[Exam]:
     return exams
 
 
-def parse_class_detail(html: str) -> dict:
+def parse_class_detail(html: str) -> ClassDetail:
     """
-    Parse detailed class information.
+    Parse detailed class information from the class detail page.
     
     Args:
         html: HTML content of class detail page
         
     Returns:
-        dict: Contains passing_grade, letter_grade, and exam_list
-        
-    Example:
-        >>> detail = parse_class_detail(html)
-        >>> print(detail["letter_grade"])
-        "AA"
+        ClassDetail: Detailed class information including exams and instructor
     """
     soup = BeautifulSoup(html, "lxml")
     
-    result = {
-        "passing_grade": None,
-        "letter_grade": None,
-        "exams": []
-    }
+    exams = []
+    instructor = None
+    class_average = None
+    letter_grade = None
     
-    # Find success status
-    status_elem = soup.find(class_="success-status")
+    # 1. Parse Letter Grade (Success Status)
+    # The success-status div contains something like "Durumu Netleşmemiş" or "Başarılı (AA)"
+    status_elem = soup.find("div", class_="success-status")
     if status_elem:
-        text = status_elem.get_text(strip=True)
-        result["letter_grade"] = text
+        status_text = status_elem.get_text(strip=True)
+        # Try to extract letter grade like AA, BA, BB, etc.
+        match = re.search(r'\b(AA|BA|BB|CB|CC|DC|DD|FD|FF)\b', status_text)
+        if match:
+            letter_grade = match.group(1)
+        else:
+            # Keep the full status text if no letter grade found
+            letter_grade = status_text if status_text and "Netleşmemiş" not in status_text else None
     
-    # Find exam table - use .table-responsive table selector
-    table_container = soup.select_one('.table-responsive table')
+    # 2. Parse Exams from the main table
+    # Find the exam table - it's inside div.table-responsive inside the active tab-pane
+    # Headers: Sınav Tipi | Sınav Adı | İlan Tarihi | Sınav Notu | Mazeret | Sınıf Sıralaması | Sınıf Ortalaması
+    tab_pane = soup.find("div", class_="tab-pane active")
+    if not tab_pane:
+        tab_pane = soup
+    
+    table_container = tab_pane.select_one('.table-responsive table')
     if not table_container:
-        table_container = soup.find("table")
+        # Fallback: find any table with exam headers
+        for table in soup.find_all("table"):
+            thead = table.find("thead")
+            if thead and ("Sınav Tipi" in thead.get_text() or "Sınav Notu" in thead.get_text()):
+                table_container = table
+                break
     
     if table_container:
         tbody = table_container.find("tbody")
@@ -212,15 +224,124 @@ def parse_class_detail(html: str) -> dict:
             for row in tbody.find_all("tr"):
                 cells = row.find_all("td")
                 if len(cells) >= 4:
-                    exam = {
-                        "type": cells[0].get_text(strip=True),
-                        "name": cells[1].get_text(strip=True),
-                        "date": cells[2].get_text(strip=True),
-                        "score": cells[3].get_text(strip=True),
-                    }
+                    exam_type = cells[0].get_text(strip=True)
+                    exam_name = cells[1].get_text(strip=True)
+                    date = cells[2].get_text(strip=True)
+                    
+                    # Parse score (column index 3)
+                    score_text = cells[3].get_text(strip=True)
+                    score = None
+                    if score_text and score_text != "-":
+                        try:
+                            score = float(score_text.replace(",", "."))
+                        except ValueError:
+                            pass
+                    
+                    ranking = None
+                    average = None
+                    
+                    # Column 4 is Mazeret (excuse), skip it
+                    # Column 5 is Sınıf Sıralaması (class rank)
+                    # Column 6 is Sınıf Ortalaması (class average)
+                    if len(cells) >= 6:
+                        ranking_text = cells[5].get_text(strip=True)
+                        if ranking_text and ranking_text != "-":
+                            ranking = ranking_text
+                    
                     if len(cells) >= 7:
-                        exam["ranking"] = cells[5].get_text(strip=True)
-                        exam["average"] = cells[6].get_text(strip=True)
-                    result["exams"].append(exam)
+                        avg_text = cells[6].get_text(strip=True)
+                        if avg_text and avg_text != "-":
+                            try:
+                                average = float(avg_text.replace(",", "."))
+                            except ValueError:
+                                pass
+                    
+                    exams.append(Exam(
+                        exam_type=exam_type,
+                        name=exam_name,
+                        date=date,
+                        score=score,
+                        ranking=ranking,
+                        average=average
+                    ))
+
+    # 3. Parse Instructor
+    instructor_div = soup.find("div", class_="instructor")
+    if instructor_div:
+        # Image
+        img_tag = instructor_div.find("img")
+        img_url = img_tag.get("src") if img_tag else None
+        
+        # Name - inside div.name > a
+        name_div = instructor_div.find("div", class_="name")
+        if name_div:
+            name_link = name_div.find("a")
+            name = name_link.get_text(strip=True) if name_link else name_div.get_text(strip=True)
+        else:
+            name = None
+        
+        if name:
+            instructor = Instructor(name=name, image_url=img_url)
+        
+        # 4. Parse Class Average (inside instructor div .avarage class)
+        avg_div = instructor_div.find("div", class_="avarage")
+        if avg_div:
+            # Look for patterns like "Not Ortalaması : 30,8"
+            text = avg_div.get_text()
+            # Try to find any number after Ortalaması
+            match = re.search(r'Ortalaması\s*:\s*([\d,]+(?:\.\d+)?)', text)
+            if match:
+                class_average = match.group(1)
+
+    return ClassDetail(
+        exams=tuple(exams),
+        instructor=instructor,
+        class_average=class_average,
+        letter_grade=letter_grade
+    )
+
+
+
+def parse_student_list(html: str) -> List[Student]:
+    """
+    Parse the list of students from the student list page/fragment.
     
-    return result
+    Args:
+        html: HTML content of the student list
+        
+    Returns:
+        List[Student]: List of students
+    """
+    soup = BeautifulSoup(html, "lxml")
+    students = []
+    
+    # Table with class="table table-condensed table-hover"
+    # Usually has "Dersi Alan Diğer Öğrenciler" heading
+    
+    # Try finding the specific student tableRows
+    rows = soup.select("table.table-hover tbody tr")
+    
+    for row in rows:
+        cells = row.find_all("td")
+        if len(cells) >= 3:
+            # cell 0: Image
+            img_tag = cells[0].find("img")
+            student_id = ""
+            image_url = None
+            
+            if img_tag:
+                 image_url = img_tag.get("src")
+                 student_id = img_tag.get("data-user-id", "")
+            
+            name = cells[1].get_text(strip=True)
+            surname = cells[2].get_text(strip=True)
+            
+            if student_id: # Only add if we found a valid row with ID
+                students.append(Student(
+                    id=student_id,
+                    name=name,
+                    surname=surname,
+                    image_url=image_url
+                ))
+                
+    return students
